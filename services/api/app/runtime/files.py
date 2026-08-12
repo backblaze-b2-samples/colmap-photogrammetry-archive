@@ -68,9 +68,7 @@ def _file_detail_response(key: str) -> FileMetadataDetail:
     except FileTooLargeServiceError as e:
         raise HTTPException(status_code=413, detail=e.detail) from None
     except RuntimeError:
-        raise HTTPException(
-            status_code=502, detail="Failed to read file from storage"
-        ) from None
+        raise HTTPException(status_code=502, detail="Failed to read file from storage") from None
 
 
 def _delete_file_response(key: str) -> dict[str, bool | str]:

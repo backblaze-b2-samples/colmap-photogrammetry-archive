@@ -1,254 +1,129 @@
 <!-- last_verified: 2026-08-06 -->
-# Vibe Coding Starter Kit
+# COLMAP Photogrammetry Archive
 
-Stop wiring boilerplate and start building. This open-source starter kit gives vibe coders and AI coding agents a well-engineered foundation — a full-stack TypeScript + Python template with a pre-built dashboard UI, file upload system, and **[Backblaze B2](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-oss-start)** cloud storage already integrated. Save thousands of tokens on setup prompts, skip the "build me a dashboard from scratch" loop, and go straight to building your app's unique features.
+A full-stack **structure-from-motion (SfM) archive** for photogrammetry studios, film-VFX teams, and cultural-heritage digitization. Create a **Project** (a scene), ingest a set of overlapping photos, run **COLMAP** locally via the official [`pycolmap`](https://github.com/colmap/colmap) bindings to recover camera poses and a sparse point cloud, then **archive every input and derived 3D artifact** — the match `database.db`, the sparse model, `points.ply`, and a per-project `manifest.json` — on **[Backblaze B2](https://www.backblaze.com/cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive)** over the S3-compatible API.
 
-Explore the [Vibe Coding Starter Kit project page](https://backblazelabs.com/projects/vibe-coding-starter-kit/), the official [Backblaze B2 AI integrations and sample applications](https://www.backblaze.com/cloud-storage/b2-ai-integrations) directory, and the checked-in [local OpenAPI contract](docs/api/openapi.json).
+The headline this sample demonstrates is **write amplification**: a photo set fans out into database + sparse + point-cloud artifacts whose total footprint meets or exceeds the source bytes, and B2 is the single storage layer that holds all of it and serves it back to downstream NeRF / 3D Gaussian Splatting jobs via presigned URLs.
+
+Runs on local OSS only — COLMAP is keyless; the only secret is your B2 credentials.
+
+Explore the official [Backblaze B2 AI integrations and sample applications](https://www.backblaze.com/cloud-storage/b2-ai-integrations?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive) directory and the checked-in [local OpenAPI contract](docs/api/openapi.json).
 
 **What you get out of the box:**
-- Full-stack dashboard UI (Next.js 16 + React 19 + Tailwind v4 + shadcn/ui)
-- File upload with drag-and-drop, progress tracking, and metadata extraction
-- File browser with preview, download, and delete
+- Full-stack UI (Next.js 16 + React 19 + Tailwind v4 + shadcn/ui) with a **Projects** library, project detail (pipeline timeline, **write-amplification panel**, reconstruction stats, a **project-scoped asset explorer**, and a copyable presigned-serving snippet), and an archive dashboard
+- Real COLMAP SfM via `pycolmap` — SIFT extraction (CPU), matching (exhaustive / sequential / spatial), incremental mapping — run in an **isolated worker process** so a native crash can't wedge the API
+- **B2 as the sole store** — projects are B2 objects; a per-project `manifest.json` is the canonical artifact index (no database)
+- Full-bucket **File Explorer** and drag-and-drop **Upload** kept from the starter (Upload doubles as the project Ingest step)
 - FastAPI backend with strict layered architecture and structural tests
 - Agent-optimized docs — your AI coding agent can read the repo and start contributing immediately
 
-## What it looks like
-
-**Dashboard** — stats, upload activity, and recent uploads at a glance:
-
-![Dashboard view showing stat cards, upload activity chart, and recent uploads table](docs/images/b2-starterkit-dashboard1.png)
-
-**File browser** — tree view with preview, download, and delete:
-
-![File browser view showing a tree of files with hover actions](docs/images/b2-starterkit-fileview2.png)
-
-> **Deploy your own in one click** → [Deploy to Vercel](#deploying-to-vercel). One project, one origin, no CORS to wire up.
-
 ## Quick Start
 
-You need: Node.js >= 20, pnpm >= 9, Python >= 3.12, and a free **[Backblaze B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-oss-start)**.
-
-### Start a new project
-
-**Option 1: GitHub Template (recommended)**
-
-Click the green **"Use this template"** button at the top of this repo, name your project, then:
+You need: Node.js >= 20, pnpm >= 9, Python >= 3.12, and a free **[Backblaze B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive)**. No GPU is required — COLMAP sparse SfM runs on CPU (dense MVS is CUDA-only and auto-gated).
 
 ```bash
-git clone https://github.com/yourorg/my-cool-app.git
-cd my-cool-app
-```
-
-**Option 2: Clone and reinitialize**
-
-```bash
-git clone https://github.com/backblaze-b2-samples/vibe-coding-starter-kit.git my-cool-app
-cd my-cool-app
-rm -rf .git
-git init
-git add .
-git commit -m "Initial commit from vibe-coding-starter-kit"
-```
-
-Either way you get a clean project with no upstream history — ready to push to your own repo and point your agent at it.
-
-### Setup
-
-**1. Run setup**
-
-```bash
+git clone https://github.com/backblaze-b2-samples/colmap-photogrammetry-archive.git
+cd colmap-photogrammetry-archive
 pnpm run setup
 ```
 
-This copies `.env.example` to `.env` only when `.env` does not already exist,
-installs workspace dependencies from `pnpm-lock.yaml`, creates
-`services/api/.venv` if missing, validates that an existing venv uses Python
-3.12+, and installs the API's committed Python 3.12 resolution from
-`services/api/requirements.lock`. It is safe to rerun and never overwrites an
-existing `.env`.
+`pnpm run setup` copies `.env.example` to `.env` (only when `.env` is missing), installs workspace dependencies from `pnpm-lock.yaml`, creates `services/api/.venv` if missing, validates that an existing venv uses Python 3.12+, and installs the API's committed Python 3.12 resolution (including `pycolmap`) from `services/api/requirements.lock`. It is safe to rerun.
 
-> Use the `pnpm run` form: `setup` (like `doctor`) is a built-in pnpm command
-> before pnpm 11, so bare `pnpm setup` would run pnpm's own command instead of
-> this script.
+> Use the `pnpm run` form: `setup` (like `doctor`) is a built-in pnpm command before pnpm 11, so bare `pnpm setup` would run pnpm's own command instead of this script.
 
-**2. Add your B2 credentials**
+**Add your B2 credentials.** Open `.env` and, from the [Backblaze B2 dashboard](https://secure.backblaze.com/b2_buckets.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive):
 
-Open `.env` in your editor and keep it visible. Then head to the [Backblaze B2 dashboard](https://secure.backblaze.com/b2_buckets.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-oss-start) and:
-
-1. **Create a bucket.** B2 will show two values — paste each into `.env`:
-   - **Bucket Unique Name** → `B2_BUCKET_NAME`
-   - **Endpoint** → `B2_ENDPOINT`
-2. **Create an application key** with `Read and Write` permission. B2 will show two values — paste each into `.env`:
-   - **keyID** → `B2_KEY_ID`
+1. **Create a bucket.** Paste its **Bucket Unique Name** into `B2_BUCKET_NAME`. Set `B2_REGION` to the bucket's region (e.g. `us-east-005`) — the S3 endpoint `https://s3.<region>.backblazeb2.com` is derived from it.
+2. **Create an application key** with `Read and Write` permission:
+   - **keyID** → `B2_APPLICATION_KEY_ID`
    - **applicationKey** → `B2_APPLICATION_KEY` *(only shown once — paste it now)*
 
-> Want a walkthrough? See the docs for [creating a bucket](https://www.backblaze.com/docs/cloud-storage-create-and-manage-buckets) and [creating app keys](https://www.backblaze.com/docs/cloud-storage-create-and-manage-app-keys).
+> Walkthroughs: [creating a bucket](https://www.backblaze.com/docs/cloud-storage-create-and-manage-buckets?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive) and [creating app keys](https://www.backblaze.com/docs/cloud-storage-create-and-manage-app-keys?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive).
 
-**3. Run it**
+**Run it.**
 
 ```bash
 pnpm dev
 ```
 
-That's it. Frontend at `localhost:3000`, API at `localhost:8000`. Upload a file and see it working. Interactive API docs (Swagger UI) are at `localhost:8000/docs`, with ReDoc at `/redoc`.
+Frontend at `localhost:3000`, API at `localhost:8000` (Swagger UI at `/docs`). `pnpm dev` runs the `pnpm run doctor` preflight first — it catches wrong Node/Python versions, a missing venv, missing or placeholder `.env`, and taken ports.
 
-`pnpm dev` runs the preflight check first — it catches the common setup gotchas (wrong Node/Python version, missing venv, missing or placeholder `.env`, ports already taken) and tells you exactly how to fix each one. Run it standalone any time with `pnpm run doctor`.
+**Try it end to end.** Create a project on `/projects`, open **Upload** (or the project's *Ingest photos* button), drop in a set of overlapping photos, then click **Run reconstruction**. To seed a demo project from your own photos without the UI:
+
+```bash
+services/api/.venv/bin/python scripts/seed_demo_project.py --images-dir /path/to/overlapping/photos
+```
+
+No imagery is committed to this repo. The seed script ingests photos you point it at (a local folder, or a `--source-url` zip you trust to be CC0 / public-domain — document that provenance yourself); the primary path is uploading your own photos to a project.
 
 ### Supported local environments
 
-Local scripts run on macOS, Linux, and WSL2 — native Windows isn't supported
-yet (the dev scripts use POSIX shell syntax), so use WSL2 on Windows. Cloud or
-sandboxed agent environments also need permission to install dependencies and to
-bind localhost ports; see
-[docs/dev-workflows.md](docs/dev-workflows.md) for the sandbox, port-fallback,
-and IPv6 behavior.
+Local scripts run on macOS, Linux, and WSL2 — native Windows isn't supported yet (the dev scripts use POSIX shell). Reconstruction runs on CPU by default; a CUDA GPU is auto-detected and unlocks the dense MVS stage (Apple MPS is not applicable to COLMAP's CUDA kernels, so on Apple Silicon the pipeline uses CPU). See [docs/dev-workflows.md](docs/dev-workflows.md) for sandbox, port-fallback, and IPv6 behavior.
 
 ## When to use
 
-Use this repository as a template or sample implementation when you want to
-clone or fork a working file-management dashboard, connect it to your own B2
-bucket, and then rebrand and extend it for your application. It provides
-production-minded engineering controls—including strict architecture,
-contract checks, tests, linting, and deployment runbooks—so you can begin with
-a dependable scaffold instead of a blank prototype.
+Use this app when you run structure-from-motion over overlapping photo sets and need a durable, queryable archive for every input and derived 3D artifact — with B2 as the single storage layer and presigned URLs serving the artifacts back to downstream NeRF / 3D Gaussian Splatting jobs. It is also a worked example of running a native OSS workload (`pycolmap`) safely inside a layered FastAPI backend, with the whole artifact lifecycle indexed by a manifest on B2.
 
 ## When not to use
 
-Do not choose this repository expecting a complete hosted SaaS product or a
-drop-in production service. It does not provide managed hosting, user accounts,
-authentication, tenant isolation, billing, or on-call operations. Before using
-an adapted application in production, you own its product-specific security,
-operations, capacity, compliance, and support decisions.
+Do not choose this expecting a hosted, multi-tenant SaaS or a managed reconstruction service. It ships no user accounts, authentication, tenant isolation, or billing, and the API is unauthenticated and bucket-wide by default. Dense MVS and downstream NeRF / 3DGS *training* need a CUDA GPU and are out of scope here (the sample archives the sparse model + inputs for those jobs to consume). You own product-specific security, operations, capacity, and compliance for anything you adapt.
 
 ## Why Backblaze B2?
 
-[Backblaze B2](https://www.backblaze.com/cloud-storage) is the object storage this kit is built around — a deliberate default, not just a demo backend:
+[Backblaze B2](https://www.backblaze.com/cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive) is the object storage this app is built around — a deliberate default for a workload whose whole point is that it *amplifies* data:
 
-- **S3-compatible API.** B2 speaks the S3 API, so the `boto3` calls, SDKs, and tooling you already use for AWS S3 work unchanged — you just point them at B2's endpoint. This kit uses the S3-compatible API throughout (isolated in `services/api/app/repo/`), so nothing is locked to a proprietary client.
-- **Built for data-heavy apps.** B2 storage runs at a fraction of hyperscaler pricing with generous free egress to many CDN and compute partners — what you want when an AI app accumulates uploads, datasets, model artifacts, and generated media.
-- **Free to start.** A [free B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-oss-start) is enough to run everything in this repo.
-
-## Building Your App
-
-When you adapt this kit for a new app, keep the shared scaffolding and only swap out what's app-specific:
-
-- **Keep** the UI kit (`apps/web/src/components/ui/` + design tokens in `globals.css` + `/design`).
-- **Keep** the File Explorer (`/files`) and Upload (`/upload`) pages and their sidebar nav entries — they're the reusable B2-backed surface.
-- **Adapt** the Dashboard (`/`) to your use case — replace the default stats, chart, and recent uploads with metrics that reflect what your app actually does.
-- **Rebrand** by editing a single file: `apps/web/src/lib/app-config.ts` holds the app name and description (`APP_NAME`, `APP_DESCRIPTION`). Changing them there updates the page title, sidebar, and breadcrumb everywhere — no other files to touch.
-
-Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AGENTS.md#2-building-on-this-starter-kit).
-
-## Agent-First Architecture
-
-This repo is optimized for coding agents. Use the template, point your agent at it, and start building.
-
-The structure follows the principle that **repository knowledge is the system of record**. Anything an agent can't access in-context doesn't exist — so everything it needs to reason about the codebase is versioned, co-located, and discoverable from the repo itself.
-
-### How it works
-
-**[AGENTS.md](AGENTS.md) is the single source of truth for all coding agents.** Its bounded, agent-sized entry point gives agents the repository layout, architectural invariants, commands, conventions, and pointers to deeper docs. Agent-specific files (CLAUDE.md, GEMINI.md, Copilot instructions, etc.) are thin pointers back to AGENTS.md.
-
-**Architecture is enforced mechanically, not by convention.** Layering rules, import boundaries, backend application Python file-size limits, and SDK containment are verified by structural tests and lints that run on every change. When rules are enforceable by code, agents follow them reliably.
-
-**The knowledge base is structured for progressive disclosure:**
-
-```
-AGENTS.md              Single source of truth — layout, invariants, commands, conventions
-ARCHITECTURE.md        System layout, layering rules, data flows
-docs/
-  features/            Feature docs (inputs, outputs, flows, edge cases)
-  app-workflows.md     User journeys
-  dev-workflows.md     Engineering workflows and testing
-  SECURITY.md          Security principles
-  RELIABILITY.md       Reliability expectations
-  exec-plans/          Execution plans and tech debt tracker
-```
-
-### Key design decisions
-
-| Principle | Implementation |
-|-----------|---------------|
-| Give agents a single source of truth | AGENTS.md — bounded layout, invariants, commands, conventions |
-| Enforce invariants mechanically | Structural tests + ruff + ESLint verify boundaries |
-| DRY documentation | Each fact lives in one place; no redundant files to drift |
-| Strict layered architecture | `types -> config -> repo -> service -> runtime`, enforced by tests |
-| Prefer boring, composable libraries | stdlib logging over frameworks, Pydantic over ad-hoc validation |
-| Contain external SDKs | `boto3` only in `repo/` layer — verified by structural test |
-| Keep files agent-sized | 300-line limit per file, enforced by test |
-| Docs updated with code | Same-PR requirement prevents documentation rot |
-| Structured observability | JSON logging, `/metrics` endpoint, request tracing |
-
-This approach draws from [OpenAI's experience building with Codex](https://openai.com/index/harness-engineering/): agents work best in environments with strict boundaries, predictable structure, and progressive context disclosure.
+- **S3-compatible API.** B2 speaks the S3 API, so the `boto3` calls and tooling you already use for AWS S3 work unchanged — you just point them at B2's regional endpoint. All storage access is isolated in `services/api/app/repo/`.
+- **Built for the fan-out.** A reconstruction turns a photo set into database + sparse + (on CUDA) dense artifacts that can exceed the source bytes. B2's low storage price and generous free egress to compute/CDN partners is what you want when every project multiplies its own footprint and gets streamed to downstream jobs.
+- **Free to start.** A [free B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive) is enough to run everything here.
 
 ## Core Features
 
-- [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
-- [File Browser](docs/features/file-browser.md) — list, preview, download, delete files
-- [Dashboard](docs/features/dashboard.md) — stats cards, upload chart, recent uploads
-- [Metadata Extraction](docs/features/metadata-extraction.md) — image dimensions, EXIF, PDF info, checksums
-- [Design System](docs/design-system.md) — tokens, primitives, AI elements, the blaze generating loader, and inline `ErrorState` / `EmptyState` patterns. Live preview at `/design`.
-- Inline error handling — fetch failures surface *what's wrong* (API offline, 401, 5xx) and offer a Retry, instead of silently rendering empty state.
-- Single-source config — one `.env` at the repo root powers both API and web app, validated at startup so misconfig fails fast with a readable message.
-- Centralized data layer — every fetch goes through TanStack Query hooks in `apps/web/src/lib/queries.ts`; cache invalidation is one call after a mutation.
-- Checked local API contract — [`docs/api/openapi.json`](docs/api/openapi.json) plus `pnpm contract:check` catch FastAPI/client route drift; it describes the template API you run, not a hosted public endpoint.
-- Structural tests — verify layering rules, import boundaries, SDK containment, and backend application Python file-size limits
-- Structured JSON logging — every request traced with `request_id` and timing
-- `/health` endpoint — B2 connectivity check
-- `/metrics` endpoint — Prometheus-format counters (request count, latency, uploads)
-- `/docs` + `/redoc` — auto-generated interactive API docs (toggle off in prod with `ENABLE_DOCS=false`)
-- Per-IP rate limiting and magic-byte upload validation — see [SECURITY.md](docs/SECURITY.md)
+- [Projects](docs/features/projects.md) — the primary entity, with full create / read / edit / delete / run and a project-scoped asset explorer over the B2 manifest
+- [Reconstruction pipeline](docs/features/reconstruction-pipeline.md) — COLMAP stages, matcher modes, CPU-default / CUDA-gated dense, isolated-worker crash isolation
+- [Write amplification](docs/features/write-amplification.md) — the headline metric: source photo bytes vs derived-artifact bytes and the ratio B2 absorbs
+- [File Upload](docs/features/file-upload.md) — drag-and-drop presigned upload; targets a project's ingest prefix or the generic path
+- [File Browser](docs/features/file-browser.md) — full-bucket list, preview, download, delete
+- [Dashboard](docs/features/dashboard.md) — projects, photos archived, source/artifact bytes, and the overall write-amplification ratio
+- [Metadata Extraction](docs/features/metadata-extraction.md) — image dimensions, EXIF, and checksums for ingested photos
+- [Design System](docs/design-system.md) — tokens, primitives, loader, and inline `ErrorState` / `EmptyState` patterns. Live preview at `/design`.
+- Checked local API contract — [`docs/api/openapi.json`](docs/api/openapi.json) plus `pnpm contract:check` catch FastAPI/client route drift
+- Structural tests — layering rules, import boundaries, `boto3`/`pycolmap` containment in `repo/`, and 300-line file limits
+- `/health` (B2 connectivity) and `/metrics` (Prometheus counters) endpoints; structured JSON logging with `request_id`
 
 ## Tech Stack
 
-- TypeScript, Next.js 16, React 19, Tailwind v4, shadcn/ui, Recharts
-- TanStack Query — caching, dedup, retry, stale-while-revalidate for every fetch
-- Python 3.12+, FastAPI, boto3, Pydantic v2, Pillow, PyPDF2
-- Backblaze B2 (S3-compatible object storage)
+- TypeScript, Next.js 16, React 19, Tailwind v4, shadcn/ui, Recharts, TanStack Query
+- Python 3.12+, FastAPI, boto3, Pydantic v2
+- **COLMAP via `pycolmap`** (COLMAP's own Python bindings), NumPy, Pillow, plyfile, imageio
+- Backblaze B2 (S3-compatible object storage) — the sole datastore
 - pnpm workspaces (monorepo)
 
 ## Commands
 
-The commands you reach for day to day:
-
 | Command | What it does |
 |---------|-------------|
-| `pnpm run setup` | One-time cold start: copy `.env.example` → `.env` (only if missing), install workspace deps, create the backend venv, install locked API deps |
+| `pnpm run setup` | One-time cold start: copy `.env.example` → `.env` (only if missing), install workspace deps, create the backend venv, install locked API deps (incl. `pycolmap`) |
 | `pnpm dev` | Start frontend + backend (runs the `pnpm run doctor` preflight first) |
-| `pnpm verify` | Credential-free pre-PR suite — runs `check:agent-docs`, `verify:api`, then `verify:web` |
+| `pnpm verify` | Credential-free pre-PR suite — runs `pnpm check:agent-docs`, `pnpm verify:api`, then `pnpm verify:web` |
 | `pnpm verify:full` | `pnpm verify` plus Playwright E2E; needs a live local stack, real `.env`, free port 3000, and Chromium |
 | `pnpm contract:export` / `pnpm contract:check` | Export / verify the FastAPI OpenAPI contract in `docs/api/openapi.json` |
 
-`pnpm verify` is the gate to run before opening a PR. It needs
-`services/api/.venv` from `pnpm run setup`, but no B2 credentials or browser, and
-it breaks down into `pnpm verify:api` (backend lint, tests, structure),
-`pnpm verify:web` (frontend lint, unit tests, typecheck + build), and
-`pnpm check:agent-docs` (agent-doc drift).
+`pnpm verify` is the gate to run before opening a PR. It needs `services/api/.venv` from `pnpm run setup`, but no B2 credentials or browser, and it breaks down into `pnpm verify:api` (backend lint, tests, structure), `pnpm verify:web` (frontend lint, unit tests, typecheck + build), and `pnpm check:agent-docs` (agent-doc drift).
 
-For the full command reference (`dev:web`, `dev:api`, `lint`, `test:*`,
-`check:structure`, `test:e2e`, live B2 tests), plus worktree/parallel-run notes,
-port-fallback behavior, and slow-run recovery, see
-[docs/dev-workflows.md](docs/dev-workflows.md).
+For the full command reference (`dev:web`, `dev:api`, `lint`, `test:*`, `check:structure`, `test:e2e`, live B2 tests) plus worktree/parallel-run, port-fallback, and slow-run notes, see [docs/dev-workflows.md](docs/dev-workflows.md).
 
 ## Deploying to Vercel
 
-Deploys as **one Vercel project** — the Next.js web app and FastAPI API build
-from the same repo and share one origin (web at `/`, API under `/api`), so
-there's **no CORS and no second URL to wire up**.
+The Next.js web app and FastAPI API deploy as **one Vercel project** sharing one origin (web at `/`, API under `/api`), so there's **no CORS and no second URL to wire up**.
 
-[![Deploy to Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbackblaze-b2-samples%2Fvibe-coding-starter-kit&project-name=vcsk&env=B2_KEY_ID,B2_APPLICATION_KEY,B2_ENDPOINT,B2_BUCKET_NAME&envDescription=B2%20credentials%20and%20bucket&envLink=https%3A%2F%2Fgithub.com%2Fbackblaze-b2-samples%2Fvibe-coding-starter-kit%2Fblob%2Fmain%2Finfra%2Fvercel%2FREADME.md)
+[![Deploy to Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbackblaze-b2-samples%2Fcolmap-photogrammetry-archive&project-name=colmap-photogrammetry-archive&env=B2_APPLICATION_KEY_ID,B2_APPLICATION_KEY,B2_BUCKET_NAME,B2_REGION&envDescription=B2%20credentials%2C%20bucket%2C%20and%20region&envLink=https%3A%2F%2Fgithub.com%2Fbackblaze-b2-samples%2Fcolmap-photogrammetry-archive%2Fblob%2Fmain%2Finfra%2Fvercel%2FREADME.md)
 
-Set your B2 credentials and bucket, and you're live. Uploads go **directly from
-the browser to B2** (presigned PUT), so Vercel's 4.5 MB payload limit doesn't
-apply — you keep the 100 MB default. Two things to know before a real deploy:
+Set your B2 credentials, bucket, and region and you're live. Ingest uploads go **directly from the browser to B2** (presigned PUT), so Vercel's 4.5 MB payload limit doesn't apply. Two caveats specific to this app:
 
-- Your bucket's CORS must allow the deploy origin.
-- The deployed API is unauthenticated and bucket-wide — use a dedicated B2
-  bucket/prefix and key for any preview.
+- **Reconstruction is CPU-heavy and long-running.** COLMAP SfM is best run on a self-hosted API (a machine with real CPU, or a CUDA GPU for dense MVS) rather than a short-lived serverless function. A Vercel deploy is ideal for browsing the archive and ingesting photos; point it at a self-hosted API for production reconstruction.
+- The deployed API is unauthenticated and bucket-wide — use a dedicated B2 bucket/prefix and key for any preview, and make sure the bucket's CORS allows the deploy origin.
 
-Full setup — variable reference, the two-Projects alternative, security,
-preview/production, `/health` checks, and rollback — is in the
-[Vercel delivery contract](infra/vercel/README.md).
+Full setup — variable reference, the two-Projects alternative, security, and rollback — is in the [Vercel delivery contract](infra/vercel/README.md).
 
 ## Documentation Map
 
@@ -256,62 +131,44 @@ preview/production, `/health` checks, and rollback — is in the
 |-----|---------|
 | [AGENTS.md](AGENTS.md) | Agent table of contents — start here |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System layout, layering, data flows |
-| [docs/features/](docs/features/) | Feature docs (upload, browser, dashboard, metadata) |
-| [docs/design-system.md](docs/design-system.md) | Design tokens, primitives, AI elements, loader, error/empty states |
+| [docs/features/](docs/features/) | Feature docs (projects, reconstruction, write amplification, upload, browser, dashboard, metadata) |
 | [docs/app-workflows.md](docs/app-workflows.md) | User journeys |
 | [docs/dev-workflows.md](docs/dev-workflows.md) | Engineering workflows and testing |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security principles |
 | [docs/RELIABILITY.md](docs/RELIABILITY.md) | Reliability expectations |
-| [docs/api/openapi.json](docs/api/openapi.json) | Checked contract for the template's local FastAPI API |
+| [docs/api/openapi.json](docs/api/openapi.json) | Checked contract for the app's local FastAPI API |
 | [infra/vercel/README.md](infra/vercel/README.md) | Vercel deployment contract |
 | [docs/exec-plans/](docs/exec-plans/) | Execution plans and tech debt tracker |
 
 ## FAQ
 
-**What is the Vibe Coding Starter Kit?**
-An open-source, full-stack template (Next.js 16 + FastAPI) with a pre-built dashboard UI, drag-and-drop file upload, and file browser, with [Backblaze B2](https://www.backblaze.com/cloud-storage) cloud storage already integrated. You clone it, connect it to your own B2 bucket, then rebrand and extend it for your app.
+**What does COLMAP Photogrammetry Archive do?**
+It lets a team create a Project, ingest overlapping photos to Backblaze B2, run COLMAP structure-from-motion locally (via `pycolmap`) to recover camera poses and a sparse point cloud, and archive every input and derived artifact under the project's B2 prefix — indexed by a `manifest.json`. It surfaces the write-amplification ratio (derived-artifact bytes ÷ source photo bytes) and serves artifacts back to downstream jobs with presigned URLs.
+
+**Do I need a GPU?**
+No. Sparse SfM (SIFT extraction, matching, incremental mapping) runs on CPU. Dense MVS is CUDA-only and auto-gated: on a CUDA host it runs; otherwise the dense stage is cleanly skipped and the sparse model is archived for GPU jobs. Apple MPS is not applicable to COLMAP's CUDA kernels, so Apple Silicon uses the CPU path.
+
+**Where is project data stored?**
+Entirely in your B2 bucket. There is no database — each project is a `projects/<slug>/manifest.json` object, and that manifest is the canonical index of the project's photos and artifacts.
 
 **Is it free?**
-Yes. The code is MIT-licensed (see [License](#license)), and Backblaze B2 offers a free account to get started.
+The code is MIT-licensed (see [License](#license)) and Backblaze B2 offers a free account. COLMAP runs on-device, so a reconstruction costs nothing beyond your own compute.
 
 **Can I use it in production?**
-It's a template/sample Backblaze maintains to help developers get started with B2. Production use is possible with caution and requires your own validation — you own the product-specific security, operations, capacity, compliance, and support decisions for anything you adapt, and the repository software carries no SLA. See [When not to use](#when-not-to-use) and [Maintenance and support](#maintenance-and-support).
-
-**Does it include authentication, user accounts, or multi-tenant isolation?**
-No. It does not provide managed hosting, user accounts, authentication, tenant isolation, billing, or on-call operations. Add whatever your application requires on top of the scaffold.
+It's a sample Backblaze maintains to help developers build on B2. Production use is possible with caution and your own validation — you own the security, operations, capacity, and compliance decisions for anything you adapt, and the repository software carries no SLA. See [When not to use](#when-not-to-use).
 
 **Do I have to use Backblaze B2?**
-It integrates Backblaze B2 through the S3-compatible API, and B2 is the storage the kit is built around. You supply your own B2 bucket and application key during setup.
+It integrates B2 through the S3-compatible API and B2 is the storage the app is built around. You supply your own bucket and application key during setup.
 
-**Is it really built for AI coding agents?**
-Yes. [AGENTS.md](AGENTS.md) is the single source of truth for coding agents, architectural boundaries are enforced mechanically by structural tests and lints (not by convention), and the docs use progressive disclosure — so an agent can read the repo and start contributing immediately.
-
-**What's the tech stack?**
-Frontend: TypeScript, Next.js 16, React 19, Tailwind v4, shadcn/ui, TanStack Query. Backend: Python 3.12+, FastAPI, boto3, Pydantic v2. Storage: Backblaze B2 (S3-compatible). See [Tech Stack](#tech-stack).
-
-**How do I rebrand it for my own app?**
-Edit a single file — `apps/web/src/lib/app-config.ts` (`APP_NAME`, `APP_DESCRIPTION`) — and the page title, sidebar, and breadcrumb update everywhere. See [Building Your App](#building-your-app).
-
-**How do I deploy it?**
-It deploys to Vercel as a single project — the web app and FastAPI API build from the same repo and share one origin (web at `/`, API under `/api`), so there's no CORS or second URL to wire up. A Railway path is also documented. Deploying is always a human-approved action — see [Deploying to Vercel](#deploying-to-vercel).
-
-**Does it work on Windows?**
-Local scripts are supported on macOS, Linux, and WSL2. Native Windows is not supported yet — use WSL2 on Windows.
+**How do I rebrand it?**
+Edit `apps/web/src/lib/app-config.ts` (`APP_NAME`, `APP_DESCRIPTION`) — the page title, sidebar, and API title all derive from it.
 
 **Where do I get help or report bugs?**
-Report repository defects and feature requests through [GitHub Issues](https://github.com/backblaze-b2-samples/vibe-coding-starter-kit/issues). For B2 account, billing, service, or API help, use [Backblaze Support](https://www.backblaze.com/help).
+Report repository defects through [GitHub Issues](https://github.com/backblaze-b2-samples/colmap-photogrammetry-archive/issues). For B2 account, billing, service, or API help, use [Backblaze Support](https://www.backblaze.com/help?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive).
 
 ## Maintenance and support
 
-Backblaze maintains this open-source template/sample to help developers get
-started with B2. Production use is possible with caution and requires your own
-validation. Report repository defects and feature requests through
-[GitHub Issues](https://github.com/backblaze-b2-samples/vibe-coding-starter-kit/issues);
-for B2 account, billing, service, or API help, use
-[Backblaze Support](https://www.backblaze.com/help). This template/sample is
-not covered by the Backblaze service level agreement, and no SLA is provided
-for the repository software; any B2 service or support commitments are governed
-separately by the applicable Backblaze terms and support plan.
+Backblaze maintains this open-source sample to help developers build on B2. Production use is possible with caution and requires your own validation. Report repository defects and feature requests through [GitHub Issues](https://github.com/backblaze-b2-samples/colmap-photogrammetry-archive/issues); for B2 account, billing, service, or API help, use [Backblaze Support](https://www.backblaze.com/help?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive). This sample is not covered by the Backblaze service level agreement, and no SLA is provided for the repository software; any B2 service or support commitments are governed separately by the applicable Backblaze terms and support plan.
 
 ## Contributing
 

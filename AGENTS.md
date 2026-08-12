@@ -20,29 +20,28 @@ infra/railway/     Deployment config
 infra/vercel/      Vercel deployment contract
 ```
 
-## 2. Building on This Starter Kit
+## 2. This App (built on the starter kit)
 
-When this repo is used as the foundation for a new app, the following pieces are part of the starter contract — keep them. Adapt only what the new use case actually requires.
+This is **COLMAP Photogrammetry Archive** — a structure-from-motion archive built on Backblaze's B2 starter kit. A user creates a **Project** (a scene), ingests overlapping photos into the project's B2 prefix, runs **COLMAP** via `pycolmap` on CPU (dense MVS is CUDA-only and auto-gated) to recover camera poses + a sparse point cloud, and the app archives the match `database.db`, the sparse model, `points.ply`, and a per-project `manifest.json` on B2. **B2 is the sole store — there is no database**; each project *is* a `projects/<slug>/manifest.json` object. The headline metric is **write amplification** (derived-artifact bytes ÷ source photo bytes). The primary entity is a **Project** (see `docs/features/projects.md`).
 
-**Keep as-is (do not strip, rename, or replace)**
-- **UI kit / design system.** `apps/web/src/components/ui/` (shadcn primitives), the design tokens in `apps/web/src/app/globals.css`, and the `/design` reference page. Build new screens with these primitives; never edit the generated `components/ui/` files directly. Restyling happens through tokens in `globals.css`.
-- **File Explorer.** `/files` route, `apps/web/src/app/files/`, and `apps/web/src/components/files/`. The Files sidebar entry in `apps/web/src/components/layout/app-sidebar.tsx` stays.
-- **Upload.** `/upload` route, `apps/web/src/app/upload/`, and `apps/web/src/components/upload/`. The Upload sidebar entry stays.
-- The sidebar nav itself (Dashboard, Upload, Files, Settings, plus the Design System utility link).
+**Kept from the starter (do not strip, rename, or replace)**
+- **UI kit / design system.** `apps/web/src/components/ui/` (shadcn primitives), the design tokens in `apps/web/src/app/globals.css`, and the `/design` reference page. Build new screens with these primitives; never edit generated `components/ui/` files — restyle through tokens in `globals.css`.
+- **Full-bucket File Explorer.** `/files` + `apps/web/src/components/files/` + `runtime/files.py` — the bucket-wide browser is retained alongside the project-scoped asset explorer.
+- **Upload.** `/upload` + `apps/web/src/components/upload/` — generic B2 upload is kept and extended into the project **Ingest** step (a target selector lands photos under `projects/<slug>/images/`).
+- The sidebar nav (Dashboard, Projects, Upload, Files, Settings, plus the Design System link).
 
-**Adapt to the new use case**
-- **Dashboard.** `/` route and `apps/web/src/components/dashboard/` (stats cards, upload chart, recent uploads table) are illustrative defaults. Replace them with metrics, charts, and tables that reflect what the new app actually does (e.g. transcripts processed, embeddings indexed, classifications run). New aggregations must flow through the same `runtime -> service -> repo` layering and be exposed via TanStack Query hooks in `apps/web/src/lib/queries.ts` — no bare `useEffect + fetch`.
-- Update `docs/features/dashboard.md` in the same PR as any dashboard change (see §9).
+**Added for this app**
+- **Projects** (`/projects`, `/projects/[slug]`) — the primary entity with full create/read/edit/delete/run, persisted as JSON manifests in B2. Compute lives in `repo/colmap_engine.py` (all `pycolmap`, LAZY-imported); lifecycle in `service/projects.py`; the run path in `service/reconstruction_runner.py` executes COLMAP in an isolated process (`service/colmap_worker.py`) so a native crash can't wedge the API; project/artifact B2 I/O in `repo/manifest.py` + `repo/artifacts.py`; the scoped explorer in `service/project_artifacts.py`.
+- **Dashboard** (`/`, `apps/web/src/components/dashboard/`) repointed to archive + write-amplification metrics. New aggregations flow through `runtime -> service -> repo` and TanStack Query hooks in `apps/web/src/lib/queries.ts` — no bare `useEffect + fetch`. Update `docs/features/dashboard.md` in the same PR (see §9).
 
-**Why this contract exists**
-- The UI kit, Files, and Upload pages are the reusable B2-backed scaffolding that makes this a starter kit — stripping them defeats the purpose. The dashboard is the only screen explicitly designed to be rewritten per app.
+**Deployment.** COLMAP sparse SfM is CPU-only and always runs; dense MVS is CUDA-only and auto-gated (device auto-detect: CUDA -> else CPU; MPS is N/A to COLMAP). The API is local/self-hosted for real reconstruction; the Next.js frontend + archive browsing may deploy to Vercel.
 
 ## 3. Architectural Invariants
 
 **Backend layering**: `types` -> `config` -> `repo` -> `service` -> `runtime`
 
 - No backward imports across layers
-- No `boto3` outside `repo/`
+- No `boto3` outside `repo/`; no `pycolmap` imported outside `repo/` (and it is LAZY-imported inside `repo/colmap_engine.py` functions so the app/tests/OpenAPI export load without the heavy wheel)
 - No business logic in route handlers (`runtime/`)
 - All external APIs wrapped in `repo/` adapters
 - All request/response data validated at boundary (Pydantic models)
@@ -72,6 +71,7 @@ When this repo is used as the foundation for a new app, the following pieces are
 |------|-------------|
 | No backward imports | `tests/test_structure.py::test_no_backward_imports` |
 | No boto3 outside repo/ | `tests/test_structure.py::test_boto3_only_in_repo` |
+| No pycolmap outside repo/ | `tests/test_structure.py::test_pycolmap_only_in_repo` |
 | Backend app Python file size < 300 lines | `tests/test_structure.py::test_api_app_python_file_size_limit` |
 | All layers exist | `tests/test_structure.py::test_all_layers_exist` |
 | No bare print() | `ruff` rule T20 |

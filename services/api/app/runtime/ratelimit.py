@@ -54,9 +54,7 @@ def _tier_and_limit(request: Request) -> tuple[str, int]:
     the tighter tier.
     """
     path = request.url.path
-    if request.method in ("POST", "DELETE") or path.endswith(
-        ("/download", "/preview", "/detail")
-    ):
+    if request.method in ("POST", "DELETE") or path.endswith(("/download", "/preview", "/detail")):
         return "write", settings.rate_limit_write_per_minute
     return "read", settings.rate_limit_per_minute
 
@@ -93,9 +91,7 @@ async def rate_limit_middleware(request: Request, call_next):
     if over_limit:
         return JSONResponse(
             status_code=429,
-            content=ErrorResponse(
-                detail="Rate limit exceeded. Try again shortly."
-            ).model_dump(),
+            content=ErrorResponse(detail="Rate limit exceeded. Try again shortly.").model_dump(),
             headers={"Retry-After": str(int(_WINDOW_SECONDS))},
         )
     return await call_next(request)

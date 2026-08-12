@@ -22,6 +22,9 @@ class PresignUploadRequest(BaseModel):
     filename: str
     content_type: str
     size_bytes: int
+    # Optional: target a project's ingest prefix (projects/<slug>/images/)
+    # instead of the default uploads/ prefix. None keeps the generic path.
+    project_slug: str | None = None
 
 
 class PresignUploadResponse(BaseModel):

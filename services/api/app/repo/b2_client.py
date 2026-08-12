@@ -33,24 +33,24 @@ def _split_key(key: str) -> tuple[str, str]:
 
 def _public_url(key: str) -> str | None:
     """Build a public URL for an object key, percent-encoding the path."""
-    if not settings.b2_public_url:
+    if not settings.b2_public_url_base:
         return None
-    return f"{settings.b2_public_url}/{quote(key, safe='/')}"
+    return f"{settings.b2_public_url_base}/{quote(key, safe='/')}"
 
 
 @functools.lru_cache(maxsize=1)
 def get_s3_client():
     return boto3.client(
         "s3",
-        endpoint_url=settings.b2_endpoint,
-        aws_access_key_id=settings.b2_key_id,
+        endpoint_url=settings.endpoint_url,
+        aws_access_key_id=settings.b2_application_key_id,
         aws_secret_access_key=settings.b2_application_key,
         config=Config(
             connect_timeout=5,
             read_timeout=30,
             retries={"mode": "standard", "total_max_attempts": 3},
             signature_version="s3v4",
-            user_agent_extra="b2ai-oss-start",
+            user_agent_extra="b2ai-colmap-photogrammetry-archive",
         ),
     )
 
@@ -79,9 +79,7 @@ def check_connectivity() -> bool:
     return ok
 
 
-def upload_file(
-    file_data: bytes, key: str, content_type: str
-) -> FileMetadata:
+def upload_file(file_data: bytes, key: str, content_type: str) -> FileMetadata:
     """Upload file to B2. Raises RuntimeError on S3 failure."""
     client = get_s3_client()
     try:
@@ -175,9 +173,7 @@ def list_files(prefix: str = "") -> list[FileMetadata]:
 def get_file_metadata(key: str) -> FileMetadata | None:
     client = get_s3_client()
     try:
-        response = client.head_object(
-            Bucket=settings.b2_bucket_name, Key=key
-        )
+        response = client.head_object(Bucket=settings.b2_bucket_name, Key=key)
     except ClientError as e:
         # Only treat 404/NoSuchKey as "not found"; re-raise other errors
         code = e.response.get("Error", {}).get("Code", "")
@@ -227,9 +223,7 @@ def get_presigned_url(
     Raises ValueError for any other value.
     """
     if disposition not in DISPOSITIONS:
-        raise ValueError(
-            f"disposition must be one of {DISPOSITIONS}, got {disposition!r}"
-        )
+        raise ValueError(f"disposition must be one of {DISPOSITIONS}, got {disposition!r}")
     client = get_s3_client()
     params: dict = {"Bucket": settings.b2_bucket_name, "Key": key}
     if filename:
@@ -258,9 +252,7 @@ def get_upload_stats() -> dict:
     contents = _list_all_objects()
     total_size = sum(obj["Size"] for obj in contents)
     today = datetime.now(UTC).date()
-    uploads_today = sum(
-        1 for obj in contents if obj["LastModified"].date() == today
-    )
+    uploads_today = sum(1 for obj in contents if obj["LastModified"].date() == today)
     return {
         "total_files": len(contents),
         "total_size_bytes": total_size,

@@ -8,19 +8,34 @@ import {
 } from "@tanstack/react-query";
 import {
   ApiError,
+  createProject,
   deleteFile,
+  deleteProject,
   getDownloadUrl,
   getFileDetail,
   getFiles,
   getFileStats,
   getHealth,
   getPreviewUrl,
+  getProject,
+  getProjectArtifacts,
+  getProjectCapabilities,
+  getProjects,
+  getProjectStats,
   getUploadActivity,
+  runProject,
+  updateProject,
 } from "@/lib/api-client";
 import type {
+  ArtifactEntry,
   FileMetadata,
   FileMetadataDetail,
-} from "@vibe-coding-starter-kit/shared";
+  Project,
+  ProjectCreate,
+  ProjectStats,
+  ProjectUpdate,
+  ServerCapabilities,
+} from "@colmap-photogrammetry-archive/shared";
 
 // Single source of truth for query keys. Keep these tightly scoped so that
 // invalidating "files" doesn't blow away unrelated caches, and so an IDE
@@ -35,7 +50,22 @@ export const qk = {
   preview: (key: string) => [...qk.all, "preview", key] as const,
   detail: (key: string) => [...qk.all, "detail", key] as const,
   health: () => [...qk.all, "health"] as const,
+  projects: () => [...qk.all, "projects"] as const,
+  project: (slug: string) => [...qk.all, "project", slug] as const,
+  projectStats: () => [...qk.all, "projects", "stats"] as const,
+  projectArtifacts: (slug: string) =>
+    [...qk.all, "project", slug, "artifacts"] as const,
 };
+
+// A project is mid-reconstruction in any of these states, so its detail view
+// should poll for live stage/status updates.
+const RUNNING_STATUSES = new Set([
+  "queued",
+  "extracting",
+  "matching",
+  "sparse",
+  "dense",
+]);
 
 export type Health = Awaited<ReturnType<typeof getHealth>>;
 
@@ -166,6 +196,96 @@ export function useDeleteFile() {
       // activity) against the server in the background.
       dropDeletedFileFromCache(qc, fileKey);
       qc.invalidateQueries({ queryKey: qk.all });
+    },
+  });
+}
+
+// --- Photogrammetry archive: Project hooks ---------------------------------
+
+export function useProjects() {
+  return useQuery<Project[], ApiError>({
+    queryKey: qk.projects(),
+    queryFn: getProjects,
+  });
+}
+
+export function useProjectStats() {
+  return useQuery<ProjectStats, ApiError>({
+    queryKey: qk.projectStats(),
+    queryFn: getProjectStats,
+  });
+}
+
+export function useProjectCapabilities() {
+  return useQuery<ServerCapabilities, ApiError>({
+    queryKey: [...qk.all, "projects", "capabilities"],
+    queryFn: getProjectCapabilities,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * One project's detail. While it is mid-reconstruction the query polls every
+ * 2.5s so the stage timeline, status badge, and write-amplification panel
+ * advance live; once it settles (archived/failed/draft) polling stops.
+ */
+export function useProject(slug: string | undefined, { enabled = true }: QueryGate = {}) {
+  return useQuery<Project, ApiError>({
+    queryKey: qk.project(slug ?? ""),
+    queryFn: () => getProject(slug as string),
+    enabled: enabled && !!slug,
+    refetchInterval: (query) =>
+      query.state.data && RUNNING_STATUSES.has(query.state.data.status)
+        ? 2500
+        : false,
+  });
+}
+
+export function useProjectArtifacts(
+  slug: string | undefined,
+  { enabled = true }: QueryGate = {},
+) {
+  return useQuery<ArtifactEntry[], ApiError>({
+    queryKey: qk.projectArtifacts(slug ?? ""),
+    queryFn: () => getProjectArtifacts(slug as string),
+    enabled: enabled && !!slug,
+  });
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation<Project, ApiError, ProjectCreate>({
+    mutationFn: (payload) => createProject(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.projects() }),
+  });
+}
+
+export function useUpdateProject(slug: string) {
+  const qc = useQueryClient();
+  return useMutation<Project, ApiError, ProjectUpdate>({
+    mutationFn: (payload) => updateProject(slug, payload),
+    onSuccess: (project) => {
+      qc.setQueryData(qk.project(slug), project);
+      qc.invalidateQueries({ queryKey: qk.projects() });
+    },
+  });
+}
+
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation<{ deleted: boolean; slug: string }, ApiError, string>({
+    mutationFn: (slug) => deleteProject(slug),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.all }),
+  });
+}
+
+export function useRunProject(slug: string) {
+  const qc = useQueryClient();
+  return useMutation<Project, ApiError, void>({
+    mutationFn: () => runProject(slug),
+    onSuccess: (project) => {
+      qc.setQueryData(qk.project(slug), project);
+      qc.invalidateQueries({ queryKey: qk.projects() });
     },
   });
 }

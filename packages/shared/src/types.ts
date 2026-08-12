@@ -71,3 +71,101 @@ export interface UploadStats {
   uploads_today: number;
   total_downloads: number;
 }
+
+// --- Photogrammetry archive (Project entity) -------------------------------
+
+export type ProjectStatus =
+  | "draft"
+  | "queued"
+  | "extracting"
+  | "matching"
+  | "sparse"
+  | "dense"
+  | "archived"
+  | "failed";
+
+export type MatcherMode = "exhaustive" | "sequential" | "spatial";
+export type FeatureQuality = "low" | "medium" | "high";
+
+export interface ReconstructionStats {
+  images_found: number;
+  images_registered: number;
+  sparse_points: number;
+  mean_reproj_error: number;
+  dense_points: number | null;
+}
+
+export interface ArtifactEntry {
+  key: string;
+  kind: string;
+  size_bytes: number;
+  size_human: string;
+}
+
+export interface WriteAmplification {
+  source_bytes: number;
+  source_bytes_human: string;
+  artifact_bytes: number;
+  artifact_bytes_human: string;
+  ratio: number;
+}
+
+export interface PipelineStage {
+  name: string;
+  label: string;
+  status: string;
+  detail: string | null;
+}
+
+export interface Project {
+  slug: string;
+  name: string;
+  status: ProjectStatus;
+  matcher: MatcherMode;
+  quality: FeatureQuality;
+  max_image_dim: number | null;
+  enable_dense: boolean;
+  source_prefix: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  device: string | null;
+  duration_seconds: number | null;
+  error: string | null;
+  images_archived: number;
+  stats: ReconstructionStats;
+  write_amplification: WriteAmplification;
+  stages: PipelineStage[];
+  artifacts: ArtifactEntry[];
+}
+
+export interface ProjectCreate {
+  name: string;
+  matcher: MatcherMode;
+  quality: FeatureQuality;
+  max_image_dim: number | null;
+  enable_dense: boolean;
+  source_prefix: string;
+}
+
+export type ProjectUpdate = Partial<ProjectCreate>;
+
+export interface ServerCapabilities {
+  device: string;
+  dense_available: boolean;
+}
+
+export interface ProjectStats {
+  total_projects: number;
+  draft: number;
+  running: number;
+  archived: number;
+  failed: number;
+  images_archived: number;
+  sparse_points: number;
+  source_bytes: number;
+  source_bytes_human: string;
+  artifact_bytes: number;
+  artifact_bytes_human: string;
+  ratio: number;
+}

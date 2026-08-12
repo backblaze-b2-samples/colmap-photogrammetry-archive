@@ -2,7 +2,12 @@
 # Feature: Metadata Extraction
 
 ## Purpose
-Extract rich metadata (checksums, image/PDF fields) from stored objects, on demand. Since uploads go directly to B2, this no longer runs at upload — it is computed only when the Files browser asks for it.
+Extract rich metadata (checksums, image dimensions, EXIF) from stored objects on
+demand. For this photogrammetry app the load-bearing case is **ingested photos**:
+image dimensions and EXIF of the overlapping photos you upload to a project still
+matter (they inform matcher choice and the `max_image_dim` downscale). Since
+uploads go directly to B2, extraction runs only when the Files browser asks for
+it — not at upload.
 
 ## Used By
 - API: `POST /upload/verify` — the direct-to-B2 upload no longer streams bytes through the API, so extraction no longer runs at upload and the verify response returns `metadata: null`

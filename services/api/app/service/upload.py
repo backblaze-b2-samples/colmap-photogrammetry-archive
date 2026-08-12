@@ -11,6 +11,11 @@ from app.repo import (
     invalidate_listing,
 )
 from app.service.files import FileKeyError, validate_key
+from app.service.upload_targets import (
+    UPLOAD_PREFIX,
+    is_project_image_key,
+    target_prefix,
+)
 from app.types import FileUploadResponse, PresignUploadResponse
 from app.types.formatting import humanize_bytes
 
@@ -97,8 +102,9 @@ _CONTENT_SIGNATURES: dict[str, Callable[[bytes], bool]] = {
     "application/zip": lambda d: d[:4] in (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
     "video/mp4": lambda d: d[4:8] == b"ftyp",  # ISO base media 'ftyp' box
     # ID3 tag, or an MPEG audio frame sync (11 set bits).
-    "audio/mpeg": lambda d: d[:3] == b"ID3"
-    or (len(d) >= 2 and d[0] == 0xFF and (d[1] & 0xE0) == 0xE0),
+    "audio/mpeg": lambda d: (
+        d[:3] == b"ID3" or (len(d) >= 2 and d[0] == 0xFF and (d[1] & 0xE0) == 0xE0)
+    ),
     "audio/wav": lambda d: d[:4] == b"RIFF" and d[8:12] == b"WAVE",
 }
 
@@ -133,11 +139,7 @@ def sanitize_filename(filename: str) -> str:
         # otherwise (no dot, or an absurdly long "extension") hard-truncate.
         # `rpartition` returns ("", "", name) when there is no dot, so guard on
         # `sep`, not `ext` — else an extensionless name keeps its whole body.
-        name = (
-            base[: 200 - len(ext) - 1] + "." + ext
-            if sep and len(ext) < 200
-            else name[:200]
-        )
+        name = base[: 200 - len(ext) - 1] + "." + ext if sep and len(ext) < 200 else name[:200]
     return name or "unnamed"
 
 
@@ -161,15 +163,14 @@ class UploadError(Exception):
         super().__init__(detail)
 
 
-# Every object the app writes lives under this prefix; the API mints the key so
-# the client never chooses where its bytes land.
-UPLOAD_PREFIX = "uploads/"
 # Leading bytes fetched for the post-upload sniff. The deepest signature check
 # reads data[8:12]; 512 leaves generous headroom for any future signature.
 _SNIFF_BYTES = 512
 
 
-def _validate_declared(filename: str, content_type: str, size_bytes: int) -> str:
+def _validate_declared(
+    filename: str, content_type: str, size_bytes: int, prefix: str = UPLOAD_PREFIX
+) -> str:
     """Validate a *declared* upload (pre-bytes) and return the key it may write.
 
     Runs at presign time and applies the same allow-list / extension / size
@@ -185,28 +186,31 @@ def _validate_declared(filename: str, content_type: str, size_bytes: int) -> str
             status_code=413,
         )
     if content_type not in ALLOWED_TYPES:
-        raise UploadError(
-            f"File type '{content_type}' not allowed", status_code=415
-        )
+        raise UploadError(f"File type '{content_type}' not allowed", status_code=415)
     safe_name = sanitize_filename(filename)
     if not validate_extension_matches_type(safe_name, content_type):
         raise UploadError(
             "File extension does not match declared content type",
             status_code=415,
         )
-    return f"{UPLOAD_PREFIX}{safe_name}"
+    return f"{prefix}{safe_name}"
 
 
 def create_presigned_upload(
-    filename: str, content_type: str, size_bytes: int
+    filename: str, content_type: str, size_bytes: int, project_slug: str | None = None
 ) -> PresignUploadResponse:
     """Validate a declared upload and return a presigned PUT for direct-to-B2.
 
     `size_bytes` and `content_type` are signed into the URL, so B2 refuses any
     body of a different size or type — the size/type guarantees survive even
-    though the bytes never reach the API. Raises UploadError on failure.
+    though the bytes never reach the API. When `project_slug` is given the object
+    lands under that project's images/ ingest prefix. Raises UploadError on
+    failure.
     """
-    key = _validate_declared(filename, content_type, size_bytes)
+    prefix = target_prefix(project_slug)
+    if prefix is None:
+        raise UploadError("Invalid project slug", status_code=400)
+    key = _validate_declared(filename, content_type, size_bytes, prefix)
     expires_in = settings.presign_upload_expiry_seconds
     url = generate_presigned_upload(key, content_type, size_bytes, expires_in)
     return PresignUploadResponse(
@@ -236,8 +240,8 @@ def verify_upload(key: str) -> FileUploadResponse:
     always served as an allow-listed, non-executable type) and the signed size.
     Enabling quarantine→promote (see the design plan) closes that window.
     """
-    if not key.startswith(UPLOAD_PREFIX):
-        raise UploadError("Upload key must be under the uploads/ prefix")
+    if not (key.startswith(UPLOAD_PREFIX) or is_project_image_key(key)):
+        raise UploadError("Upload key must be under the uploads/ or a project's images/ prefix")
     try:
         validate_key(key)
     except FileKeyError as e:

@@ -140,9 +140,7 @@ def get_file_detail(key: str) -> FileMetadataDetail:
             f"Max size: {humanize_bytes(settings.max_file_size)}"
         )
     data = get_object_bytes(key)
-    return extract_metadata(
-        data, metadata.filename, metadata.content_type, metadata.uploaded_at
-    )
+    return extract_metadata(data, metadata.filename, metadata.content_type, metadata.uploaded_at)
 
 
 def _presigned_url_for(key: str, disposition: str) -> str:
@@ -151,9 +149,7 @@ def _presigned_url_for(key: str, disposition: str) -> str:
     metadata = get_file_metadata(key)
     if not metadata:
         raise FileNotFoundServiceError()
-    return get_presigned_url(
-        key, filename=metadata.filename, disposition=disposition
-    )
+    return get_presigned_url(key, filename=metadata.filename, disposition=disposition)
 
 
 def get_preview_url(key: str) -> str:

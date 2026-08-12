@@ -1,11 +1,17 @@
 import type {
+  ArtifactEntry,
   DailyUploadCount,
   FileMetadata,
   FileMetadataDetail,
   FileUploadResponse,
   PresignUploadResponse,
+  Project,
+  ProjectCreate,
+  ProjectStats,
+  ProjectUpdate,
+  ServerCapabilities,
   UploadStats,
-} from "@vibe-coding-starter-kit/shared";
+} from "@colmap-photogrammetry-archive/shared";
 
 // Single-origin deploys (Vercel `services`: one project serving web + API) put
 // the API under /api on the same origin, so no NEXT_PUBLIC_API_URL is needed —
@@ -17,7 +23,7 @@ export const API_BASE =
   (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:8000");
 
 type ApiClientRoute = {
-  method: "delete" | "get" | "post";
+  method: "delete" | "get" | "patch" | "post";
   path: string;
 };
 
@@ -41,7 +47,25 @@ export const API_CLIENT_ROUTES = {
   // payload ceiling no longer caps upload size.
   uploadPresign: { method: "post", path: "/upload/presign" },
   uploadVerify: { method: "post", path: "/upload/verify" },
+  // Photogrammetry archive: the Project entity + its scoped asset explorer.
+  projects: { method: "get", path: "/projects" },
+  createProject: { method: "post", path: "/projects" },
+  projectStats: { method: "get", path: "/projects/stats" },
+  projectCapabilities: { method: "get", path: "/projects/capabilities" },
+  project: { method: "get", path: "/projects/{slug}" },
+  updateProject: { method: "patch", path: "/projects/{slug}" },
+  deleteProject: { method: "delete", path: "/projects/{slug}" },
+  runProject: { method: "post", path: "/projects/{slug}/run" },
+  projectArtifacts: { method: "get", path: "/projects/{slug}/artifacts" },
+  projectArtifactDownload: {
+    method: "get",
+    path: "/projects/{slug}/artifacts/download",
+  },
 } as const satisfies Record<string, ApiClientRoute>;
+
+function projectPath(template: string, slug: string): string {
+  return template.replace("{slug}", encodeURIComponent(slug));
+}
 
 /** Typed API error with HTTP status code for caller-side branching. */
 export class ApiError extends Error {
@@ -257,7 +281,8 @@ export async function deleteFile(key: string) {
  */
 export async function uploadFile(
   file: File,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  projectSlug?: string
 ): Promise<FileUploadResponse> {
   const presign = await apiFetch<PresignUploadResponse>(
     API_CLIENT_ROUTES.uploadPresign.path,
@@ -268,6 +293,9 @@ export async function uploadFile(
         filename: file.name,
         content_type: file.type,
         size_bytes: file.size,
+        // Optional: land the photo under a project's images/ ingest prefix
+        // instead of the generic uploads/ path.
+        project_slug: projectSlug ?? null,
       }),
     }
   );
@@ -324,4 +352,70 @@ function putFileToStorage(
     }
     xhr.send(file);
   });
+}
+
+// --- Photogrammetry archive: Project lifecycle -----------------------------
+
+export async function getProjects() {
+  return apiFetch<Project[]>(API_CLIENT_ROUTES.projects.path);
+}
+
+export async function getProjectStats() {
+  return apiFetch<ProjectStats>(API_CLIENT_ROUTES.projectStats.path);
+}
+
+export async function getProjectCapabilities() {
+  return apiFetch<ServerCapabilities>(
+    API_CLIENT_ROUTES.projectCapabilities.path
+  );
+}
+
+export async function getProject(slug: string) {
+  return apiFetch<Project>(projectPath(API_CLIENT_ROUTES.project.path, slug));
+}
+
+export async function createProject(payload: ProjectCreate) {
+  return apiFetch<Project>(API_CLIENT_ROUTES.createProject.path, {
+    method: API_CLIENT_ROUTES.createProject.method.toUpperCase(),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateProject(slug: string, payload: ProjectUpdate) {
+  return apiFetch<Project>(
+    projectPath(API_CLIENT_ROUTES.updateProject.path, slug),
+    {
+      method: API_CLIENT_ROUTES.updateProject.method.toUpperCase(),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function deleteProject(slug: string) {
+  return apiFetch<{ deleted: boolean; slug: string }>(
+    projectPath(API_CLIENT_ROUTES.deleteProject.path, slug),
+    { method: API_CLIENT_ROUTES.deleteProject.method.toUpperCase() }
+  );
+}
+
+export async function runProject(slug: string) {
+  return apiFetch<Project>(
+    projectPath(API_CLIENT_ROUTES.runProject.path, slug),
+    { method: API_CLIENT_ROUTES.runProject.method.toUpperCase() }
+  );
+}
+
+export async function getProjectArtifacts(slug: string) {
+  return apiFetch<ArtifactEntry[]>(
+    projectPath(API_CLIENT_ROUTES.projectArtifacts.path, slug)
+  );
+}
+
+export async function getProjectArtifactDownloadUrl(slug: string, key: string) {
+  const base = projectPath(API_CLIENT_ROUTES.projectArtifactDownload.path, slug);
+  return apiFetch<{ url: string }>(
+    `${base}?key=${encodeURIComponent(key)}`
+  );
 }

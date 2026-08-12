@@ -13,8 +13,8 @@ Usage:
     python services/api/scripts/setup_b2_cors.py --origin https://your-app.vercel.app --apply
 
 Reads B2 credentials from the repo-root .env exactly like the app. It MERGES:
-existing CORS rules are preserved and one rule (ID `vcsk-direct-upload`) is
-added/updated for the given origins. Never prints credentials.
+existing CORS rules are preserved and one rule (ID `colmap-archive-direct-upload`)
+is added/updated for the given origins. Never prints credentials.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 from app.config import settings  # noqa: E402
 
-RULE_ID = "vcsk-direct-upload"
+RULE_ID = "colmap-archive-direct-upload"
 
 
 def out(message: str) -> None:
@@ -47,25 +47,24 @@ def err(message: str) -> None:
 
 def _client():
     # Standalone client (not app.repo.get_s3_client) on purpose: bucket-level
-    # CORS calls sign more reliably with an explicit region derived from the
-    # endpoint, whereas the app client leaves region unset for object ops.
-    host = settings.b2_endpoint.split("://", 1)[-1]
-    region = host.split(".")[1] if host.startswith("s3.") else "us-east-005"
+    # CORS calls sign more reliably with an explicit region_name, whereas the
+    # app client leaves region unset for object ops. Region comes from the
+    # standardized B2_REGION (no hardcoded region string here).
     return boto3.client(
         "s3",
-        endpoint_url=settings.b2_endpoint,
-        aws_access_key_id=settings.b2_key_id,
+        endpoint_url=settings.endpoint_url,
+        aws_access_key_id=settings.b2_application_key_id,
         aws_secret_access_key=settings.b2_application_key,
-        region_name=region,
-        config=Config(signature_version="s3v4", user_agent_extra="b2ai-oss-start"),
+        region_name=settings.b2_region or None,
+        config=Config(
+            signature_version="s3v4", user_agent_extra="b2ai-colmap-photogrammetry-archive"
+        ),
     )
 
 
 def _current_rules(client) -> list[dict]:
     try:
-        return client.get_bucket_cors(Bucket=settings.b2_bucket_name).get(
-            "CORSRules", []
-        )
+        return client.get_bucket_cors(Bucket=settings.b2_bucket_name).get("CORSRules", [])
     except ClientError as e:
         if e.response.get("Error", {}).get("Code") == "NoSuchCORSConfiguration":
             return []

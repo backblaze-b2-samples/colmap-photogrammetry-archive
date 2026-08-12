@@ -1,4 +1,4 @@
 // Single source of truth for app identity. Rename here to rebrand a clone of this starter.
-export const APP_NAME = "Vibe Coding Starter Kit";
+export const APP_NAME = "COLMAP Photogrammetry Archive";
 export const APP_DESCRIPTION =
-  "File management dashboard template powered by Backblaze B2";
+  "Structure-from-motion photogrammetry archive on Backblaze B2";

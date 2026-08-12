@@ -4,9 +4,15 @@
 ## Purpose
 Upload files from the browser **directly to Backblaze B2** with real-time
 progress tracking. The bytes never pass through the API, so uploads are not
-capped by Vercel's ~4.5 MB Function payload limit — the same flow handles up to
-`max_file_size` (100 MB default) on local, Railway, and Vercel alike, and is a
-direct showcase of B2 as the storage layer.
+capped by Vercel's ~4.5 MB Function payload limit. In this app the Upload page
+doubles as the **project Ingest** step: a target selector lands photos under a
+chosen project's ingest prefix (`projects/<slug>/images/`), while the default
+target keeps the generic `uploads/` path working.
+
+## Project ingest target
+- `apps/web/src/components/upload/upload-target.tsx` renders a selector above the dropzone. It honors a `?project=<slug>` deep link (the "Ingest photos" button on a project detail page) and stores the choice on the app-wide upload queue (`upload-queue-context.tsx`).
+- When a project is selected, `uploadFile()` sends `project_slug` in the presign body; `service/upload.py` validates the slug shape and mints the key under `projects/<slug>/images/`. `verify` accepts keys under `uploads/` **or** a `projects/<slug>/images/` prefix.
+- Only `name`-safe, strict slugs (`^[a-z0-9][a-z0-9-]{0,63}$`) are accepted before a slug becomes part of a signed key (no slashes/traversal).
 
 ## Used By
 - UI: `/upload` page, upload form component
@@ -94,7 +100,8 @@ See [infra/vercel/README.md](../../infra/vercel/README.md) for the deploy-time d
 - Empty file → `/upload/presign` returns 400
 - B2 rejects the direct PUT because the body size/type differs from the signed values → `403`, surfaced in the UI as "Upload to storage failed"
 - File contents don't match the declared type (e.g. script bytes sent as `image/png`) → `/upload/verify` returns 415 and the object is deleted
-- Verify called with a key outside the `uploads/` prefix → 400
+- Verify called with a key outside `uploads/` or a `projects/<slug>/images/` prefix → 400
+- Presign with a malformed `project_slug` (slashes, traversal, uppercase) → 400
 - Duplicate filename → B2 creates a new version (buckets are always versioned)
 - B2 unreachable → API returns 500; UI keeps failed rows retryable when the file can be resubmitted
 - Upload aborted by user → XHR abort, error state in UI

@@ -33,6 +33,7 @@ async def presign_upload(req: PresignUploadRequest):
             filename=req.filename,
             content_type=req.content_type,
             size_bytes=req.size_bytes,
+            project_slug=req.project_slug,
         )
     except UploadError as e:
         logger.warning("Presign rejected: %s", e.detail)

@@ -82,6 +82,28 @@ def test_boto3_only_in_repo():
     assert violations == [], "boto3 boundary violations:\n" + "\n".join(violations)
 
 
+def test_pycolmap_only_in_repo():
+    """Verify pycolmap (COLMAP's bindings) is only imported in app/repo/.
+
+    Keeping the heavy native wheel confined to repo/ is what lets the FastAPI
+    app, test collection, and the OpenAPI export import without it — the import
+    also stays lazy (inside functions) so even repo/ modules load wheel-free.
+    """
+    violations = []
+    for layer in LAYER_ORDER:
+        if layer == "repo":
+            continue
+        layer_dir = APP_ROOT / layer
+        if not layer_dir.exists():
+            continue
+        for pyfile in _get_python_files(layer_dir):
+            for imp in _get_imports(pyfile):
+                if imp == "pycolmap" or imp.startswith("pycolmap."):
+                    rel = pyfile.relative_to(APP_ROOT.parent)
+                    violations.append(f"{rel}: pycolmap imported outside repo/")
+    assert violations == [], "pycolmap boundary violations:\n" + "\n".join(violations)
+
+
 def test_api_app_python_file_size_limit():
     """Verify authored Python under services/api/app stays within 300 lines."""
     violations = []

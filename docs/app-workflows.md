@@ -3,6 +3,19 @@
 
 User journeys inside the application.
 
+## Archive a scene (ingest → reconstruct → archive → serve)
+
+The primary journey — create a Project, reconstruct it, and serve the artifacts.
+
+- **Create** — On `/projects`, click "New Project", name the scene, and pick matcher / quality / max image dimension (all selectors, safe defaults pre-filled). The manifest lands at `projects/<slug>/manifest.json` on B2.
+- **Ingest** — From the project's "Ingest photos" button (or `/upload` with the project selected), drag in a set of overlapping photos. They upload directly to B2 under `projects/<slug>/images/`.
+- **Reconstruct** — Click "Run reconstruction". The backend downloads the photos, runs COLMAP in an isolated worker (SIFT extraction → matching → incremental mapping → sparse model), and streams stage progress into the manifest. The detail page's pipeline timeline advances live while it runs; dense MVS is skipped on CPU (CUDA required).
+- **Archive** — When it finishes, the match `database.db`, the sparse model, and `points.ply` are written under the project prefix, the write-amplification panel shows source-vs-artifact bytes and the ratio, and the reconstruction stats fill in (images registered, sparse points, mean reprojection error).
+- **Browse** — The project-scoped asset explorer lists every object under `projects/<slug>/` with a per-artifact presigned download.
+- **Serve** — The "Serve to a downstream job" snippet is a copyable boto3 example showing how a NeRF / 3D Gaussian Splatting job pulls the images + sparse model straight from B2 via presigned URLs.
+- **Edit / Delete** — Edit re-opens the form pre-filled (settings apply to the next run). Delete removes only `projects/<slug>/` from B2 (prefix-scoped), after an AlertDialog confirm.
+- See: [Projects](features/projects.md), [Reconstruction pipeline](features/reconstruction-pipeline.md), [Write amplification](features/write-amplification.md)
+
 ## Upload Files
 
 - User navigates to `/upload`
@@ -34,13 +47,12 @@ User journeys inside the application.
 ## View Dashboard
 
 - User navigates to `/` (home)
-- Three parallel API calls load: stats, recent files, upload activity — all served from one shared bucket listing that the API warms at startup
-- While stats load, the page states it in words above the cards rather than showing silent skeletons
-- Stats cards show: total files, storage used, uploads today, total downloads
-- Upload chart shows last 7 days of upload activity as bar chart
-- Recent uploads table shows last 10 files with filename, size, type, date. Each filename links to that file's preview on `/files` — `/files` teaches "click a file to preview it", so the same gesture here has to answer rather than being inert text
-- Empty state: "No files uploaded yet" messages
-- See: [Dashboard](features/dashboard.md)
+- The archive dashboard loads project stats + the project list
+- The hero stat tile shows the overall **write-amplification ratio**; the other cards show projects, photos archived, source bytes on B2, and artifact bytes on B2
+- A bar chart plots source vs artifact bytes per project (the fan-out B2 absorbs)
+- The recent-projects table shows each project's status, photo count, and amplification, linking to its detail page
+- Empty state: "No projects yet" / "No reconstructions yet"
+- See: [Dashboard](features/dashboard.md), [Write amplification](features/write-amplification.md)
 
 ## Change Preferences
 

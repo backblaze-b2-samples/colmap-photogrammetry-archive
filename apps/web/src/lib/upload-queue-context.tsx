@@ -29,7 +29,7 @@ import { interruptedUploadMessage, type UploadItem } from "@/lib/upload-status";
 
 const MAX_TOAST_FILE_NAME_LENGTH = 80;
 /** Names of uploads that were in flight, so a reload can own up to killing them. */
-const IN_FLIGHT_STORAGE_KEY = "vibe-coding-starter-kit:uploads-in-flight";
+const IN_FLIGHT_STORAGE_KEY = "colmap-photogrammetry-archive:uploads-in-flight";
 
 function formatToastFileName(name: string) {
   if (name.length <= MAX_TOAST_FILE_NAME_LENGTH) return name;
@@ -96,6 +96,10 @@ interface UploadQueueValue {
   addRejections: (rejections: FileRejection[]) => void;
   retry: (id: string) => void;
   clearCompleted: () => void;
+  /** Optional project slug an Ingest upload targets (projects/<slug>/images/).
+   *  null = the default generic uploads/ prefix. */
+  projectTarget: string | null;
+  setProjectTarget: (slug: string | null) => void;
 }
 
 const UploadQueueContext = createContext<UploadQueueValue | null>(null);
@@ -106,8 +110,17 @@ export function UploadQueueProvider({
   children: React.ReactNode;
 }) {
   const [items, setItems] = useState<UploadItem[]>([]);
+  const [projectTarget, setProjectTargetState] = useState<string | null>(null);
   const { triggerRefresh } = useRefresh();
   const restoredRef = useRef(false);
+  // A ref mirrors the target so the serialized runQueue reads the latest value
+  // without being re-created (and thus re-running) on every target change.
+  const projectTargetRef = useRef<string | null>(null);
+
+  const setProjectTarget = useCallback((slug: string | null) => {
+    projectTargetRef.current = slug;
+    setProjectTargetState(slug);
+  }, []);
 
   const uploading = items.some((item) => item.status === "uploading");
 
@@ -160,13 +173,17 @@ export function UploadQueueProvider({
           );
 
           try {
-            const response = await uploadFile(item.file, (percent) => {
-              setItems((prev) =>
-                prev.map((i) =>
-                  i.id === item.id ? { ...i, progress: percent } : i,
-                ),
-              );
-            });
+            const response = await uploadFile(
+              item.file,
+              (percent) => {
+                setItems((prev) =>
+                  prev.map((i) =>
+                    i.id === item.id ? { ...i, progress: percent } : i,
+                  ),
+                );
+              },
+              projectTargetRef.current ?? undefined,
+            );
             setItems((prev) =>
               prev.map((i) =>
                 i.id === item.id
@@ -261,8 +278,19 @@ export function UploadQueueProvider({
       addRejections,
       retry,
       clearCompleted,
+      projectTarget,
+      setProjectTarget,
     }),
-    [items, uploading, addFiles, addRejections, retry, clearCompleted],
+    [
+      items,
+      uploading,
+      addFiles,
+      addRejections,
+      retry,
+      clearCompleted,
+      projectTarget,
+      setProjectTarget,
+    ],
   );
 
   return (

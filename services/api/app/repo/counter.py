@@ -56,9 +56,7 @@ def _save(count: int) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         # Atomic write: tmp file in the same dir, then rename.
-        fd, tmp = tempfile.mkstemp(
-            dir=path.parent, prefix=path.name + ".", suffix=".tmp"
-        )
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
         try:
             with os.fdopen(fd, "w") as f:
                 json.dump({"count": count}, f)

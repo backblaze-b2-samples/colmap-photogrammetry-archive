@@ -4,19 +4,17 @@
 ## Components
 
 - **apps/web/** — Next.js 16 frontend (App Router, Tailwind v4, shadcn/ui)
-  - Dashboard with stats, upload chart, recent uploads
-  - File upload with drag-and-drop, progress tracking
-  - File browser with preview, download, delete
+  - Projects library + project detail (pipeline timeline, write-amplification panel, reconstruction stats, project-scoped asset explorer, downstream presigned-serving snippet)
+  - Archive dashboard (projects, photos archived, source/artifact bytes, overall amplification ratio)
+  - Full-bucket file browser and drag-and-drop Upload (doubles as project Ingest)
   - Dark mode via `next-themes`
 - **services/api/** — FastAPI backend (layered architecture)
-  - REST API for file upload, listing, deletion
-  - B2 S3 integration via boto3
-  - File metadata extraction (images, PDFs)
-  - Health check endpoint with B2 connectivity verification
-  - Structured JSON logging with request tracing
-  - Prometheus-format metrics endpoint
+  - REST API for the Project lifecycle (create/read/update/delete/run), the scoped asset explorer, upload presign/verify, and the full-bucket file browser
+  - COLMAP structure-from-motion via `pycolmap` (LAZY-imported in `repo/colmap_engine.py`), run in an isolated worker process (`service/colmap_worker.py`)
+  - B2 S3 integration via boto3; per-project `manifest.json` as the artifact index (no database)
+  - Health check, Prometheus-format metrics, structured JSON logging with request tracing
 - **packages/shared/** — TypeScript type definitions
-  - Mirrors Pydantic models from the API
+  - Mirrors Pydantic models from the API (Project, ArtifactEntry, WriteAmplification, …)
   - Consumed by `apps/web/` as workspace dependency
 
 ## Backend Layering
@@ -39,7 +37,7 @@ runtime/   FastAPI routes — calls service, never repo directly
 
 1. Dependencies flow downward only: `types` -> `config` -> `repo` -> `service` -> `runtime`
 2. No backward imports (e.g., service must not import from runtime)
-3. `boto3` only allowed in `repo/` layer
+3. `boto3` **and** `pycolmap` only allowed in `repo/` layer (`pycolmap` is additionally LAZY-imported inside `repo/colmap_engine.py` functions so nothing loads the native wheel at import time)
 4. All boundary data uses Pydantic models (no raw dicts across layers)
 5. Authored Python files under `services/api/app/` stay under 300 lines
 
@@ -49,11 +47,12 @@ runtime/   FastAPI routes — calls service, never repo directly
 services/api/
   main.py                  App entrypoint, middleware, router registration
   app/
-    types/                 Pydantic models (FileMetadata, UploadStats, etc.)
+    types/                 Pydantic models (projects.py, files.py, upload.py, …)
     config/                Settings loaded from environment
-    repo/                  B2 S3 client (data access layer)
-    service/               Business logic (upload, files, metadata)
-    runtime/               FastAPI route handlers
+    repo/                  B2 S3 client + manifest/artifacts + colmap_engine (data access)
+    service/               Business logic (projects, reconstruction_runner, colmap_worker, upload, files)
+    runtime/               FastAPI route handlers (projects, files, upload, health, metrics)
+  scripts/                 setup_b2_cors.py, export_openapi.py
   tests/                   pytest tests (structural + integration)
 ```
 
@@ -89,10 +88,10 @@ External provisioning and deployment remain explicit user-approved actions.
 
 ## Data Stores
 
-- **Backblaze B2** — object storage (S3-compatible API)
-  - All uploaded files stored in a single bucket
-  - File listing and metadata via S3 `list_objects_v2` / `head_object`
-  - No application database — B2 is the sole data store
+- **Backblaze B2** — object storage (S3-compatible API), the **sole** data store
+  - Each project is a `projects/<slug>/manifest.json` object — the canonical index of the project's photos and derived artifacts. There is **no database**.
+  - Project layout: `projects/<slug>/images/` (source photos), `projects/<slug>/database.db` (SIFT matches), `projects/<slug>/sparse/` (`points.ply`, `cameras.txt`, `images.txt`, `points3D.txt`), `projects/<slug>/dense/` (CUDA only), `projects/<slug>/manifest.json`.
+  - Listing/metadata via S3 `list_objects_v2` / `head_object`; a scoped listing under `projects/<slug>/` drives the asset explorer and the write-amplification computation.
 
 ## External Services
 
@@ -108,10 +107,12 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
 ## Data Flows
 
-- **Upload**: Browser -> `POST /upload/presign` (API validates the declared file + signs a PUT) -> Browser PUTs bytes **directly to B2** -> `POST /upload/verify` (API HEADs + Range-sniffs the stored object) -> response
-- **List**: Browser -> `GET /files` -> service calls repo -> returns file list
-- **Download**: Browser -> `GET /files/{key}/download` -> service validates key -> repo generates presigned URL -> browser downloads
-- **Delete**: Browser -> `DELETE /files/{key}` -> service validates key -> repo deletes from B2
+- **Create project**: Browser -> `POST /projects` -> `service/projects.create_project` derives a unique slug and writes `projects/<slug>/manifest.json` to B2
+- **Ingest**: Browser -> `POST /upload/presign` with `project_slug` (API signs a PUT to `projects/<slug>/images/`) -> Browser PUTs bytes **directly to B2** -> `POST /upload/verify`
+- **Run reconstruction**: Browser -> `POST /projects/<slug>/run` -> `service/reconstruction_runner` marks the manifest queued, launches a background thread that downloads the project's photos, invokes the **isolated COLMAP worker** (`service/colmap_worker` -> `repo/colmap_engine`), streams stage progress into the manifest, uploads `database.db` + `sparse/` + `points.ply` back under the prefix, computes **write amplification**, and flips the manifest to `archived`. The UI polls `GET /projects/<slug>` while running.
+- **Scoped explorer**: Browser -> `GET /projects/<slug>/artifacts` -> lists `projects/<slug>/` -> `GET /projects/<slug>/artifacts/download?key=…` presigns one artifact (confined to the project prefix)
+- **Delete project**: Browser -> `DELETE /projects/<slug>` -> `repo/artifacts.delete_under` removes only `projects/<slug>/` (prefix-scoped; refuses a non-slash-terminated prefix)
+- **Full-bucket browse/upload/download/delete**: unchanged from the starter (`/files`, `/upload`)
 
 ## Observability
 
@@ -134,19 +135,25 @@ silently drift from FastAPI. `GET /metrics` is intentionally server-only.
 
 ## Canonical Files
 
-- Layered API handler: `services/api/app/runtime/upload.py`
-- Service orchestration: `services/api/app/service/upload.py`
-- B2 data access (repo layer): `services/api/app/repo/b2_client.py`
-- Pydantic models: `services/api/app/types/` (`files.py`, `upload.py`, `stats.py`, `formatting.py`)
+- Project routes (runtime): `services/api/app/runtime/projects.py`
+- Project lifecycle + dashboard aggregation: `services/api/app/service/projects.py`
+- Reconstruction run path: `services/api/app/service/reconstruction_runner.py`
+- Isolated COLMAP worker: `services/api/app/service/colmap_worker.py`
+- COLMAP engine (all `pycolmap`, lazy): `services/api/app/repo/colmap_engine.py`
+- Manifest + scoped artifacts (repo): `services/api/app/repo/manifest.py`, `repo/artifacts.py`
+- B2 S3 client (repo): `services/api/app/repo/b2_client.py`
+- Pydantic models: `services/api/app/types/` (`projects.py`, `files.py`, `upload.py`, …)
 - Config (pydantic-settings): `services/api/app/config/settings.py`
 - Structural tests: `services/api/tests/test_structure.py`
 - OpenAPI contract: `docs/api/openapi.json`
-- OpenAPI exporter: `services/api/scripts/export_openapi.py`
 - Frontend API client: `apps/web/src/lib/api-client.ts`
 - Shared TypeScript types: `packages/shared/src/types.ts`
 
 ## Core Features
 
+- [Projects](docs/features/projects.md)
+- [Reconstruction pipeline](docs/features/reconstruction-pipeline.md)
+- [Write amplification](docs/features/write-amplification.md)
 - [File Upload](docs/features/file-upload.md)
 - [File Browser](docs/features/file-browser.md)
 - [Dashboard](docs/features/dashboard.md)
