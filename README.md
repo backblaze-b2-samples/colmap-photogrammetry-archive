@@ -17,6 +17,20 @@ Explore the official [Backblaze B2 AI integrations and sample applications](http
 - FastAPI backend with strict layered architecture and structural tests
 - Agent-optimized docs — your AI coding agent can read the repo and start contributing immediately
 
+## What it looks like
+
+**Dashboard** — archive-wide write-amplification, project and photo counts, a per-project source-vs-artifact bytes chart, and the most recent reconstructions.
+
+![Dashboard with write-amplification, archive totals, a source-vs-artifact bytes chart, and recent projects](docs/images/dashboard.png)
+
+**Projects** — the library of structure-from-motion scenes, each card showing its B2 prefix, photo and sparse-point counts, and write-amplification ratio.
+
+![Projects library with per-scene photo counts, sparse points, and write-amplification ratios](docs/images/projects.png)
+
+**Project detail** — per-scene write amplification, reconstruction stats, the COLMAP pipeline timeline, a copyable presigned-serving snippet, and every archived artifact on B2.
+
+![Project detail with write amplification, reconstruction stats, the COLMAP pipeline timeline, and archived B2 artifacts](docs/images/project-detail.png)
+
 ## Quick Start
 
 You need: Node.js >= 20, pnpm >= 9, Python >= 3.12, and a free **[Backblaze B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive)**. No GPU is required — COLMAP sparse SfM runs on CPU (dense MVS is CUDA-only and auto-gated).
