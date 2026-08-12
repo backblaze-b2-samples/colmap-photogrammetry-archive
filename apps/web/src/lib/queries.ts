@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -250,6 +251,30 @@ export function useProjectArtifacts(
     queryFn: () => getProjectArtifacts(slug as string),
     enabled: enabled && !!slug,
   });
+}
+
+/**
+ * The project-artifacts query does not poll, so when a run settles into a
+ * terminal state (archived/failed) the artifacts just written to B2 never
+ * appear until a manual page reload. Watch the polled project status and, on
+ * the running -> terminal transition, invalidate the artifacts query so the
+ * asset explorer refetches the complete set. Invalidating only on the
+ * transition (not a blanket refetchInterval) keeps the query idle otherwise.
+ */
+export function useRefetchArtifactsOnTerminal(
+  slug: string | undefined,
+  status: Project["status"] | undefined,
+) {
+  const qc = useQueryClient();
+  const prevStatus = useRef<Project["status"] | undefined>(undefined);
+  useEffect(() => {
+    const previous = prevStatus.current;
+    prevStatus.current = status;
+    const settled = status === "archived" || status === "failed";
+    if (slug && settled && previous !== undefined && RUNNING_STATUSES.has(previous)) {
+      qc.invalidateQueries({ queryKey: qk.projectArtifacts(slug) });
+    }
+  }, [slug, status, qc]);
 }
 
 export function useCreateProject() {

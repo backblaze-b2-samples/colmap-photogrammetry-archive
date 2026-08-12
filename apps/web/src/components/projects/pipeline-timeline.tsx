@@ -2,6 +2,7 @@ import { Check, CircleDashed, Loader2, MinusCircle, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import type { PipelineStage } from "@colmap-photogrammetry-archive/shared";
 
@@ -27,12 +28,33 @@ const ICONS: Record<string, { icon: LucideIcon; className: string }> = {
 export function PipelineTimeline({ stages }: { stages: PipelineStage[] }) {
   const merged = stages.length > 0 ? stages : DEFAULT_STAGES;
 
+  // Determinate progress from stage completion: done ÷ applicable stages
+  // (a skipped stage — e.g. dense MVS on CPU — is not applicable). Only shown
+  // once a real run has emitted stages, so a draft project stays uncluttered.
+  const hasRun = stages.length > 0;
+  const applicable = merged.filter((stage) => stage.status !== "skipped");
+  const doneCount = applicable.filter((stage) => stage.status === "done").length;
+  const pct = applicable.length
+    ? Math.round((doneCount / applicable.length) * 100)
+    : 0;
+
   return (
     <Card>
       <CardHeader className="border-b border-border px-5 py-4">
         <CardTitle className="card-title">Reconstruction pipeline</CardTitle>
       </CardHeader>
       <CardContent className="px-5 py-4">
+        {hasRun && (
+          <div className="mb-4 space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Pipeline progress</span>
+              <span className="font-mono tabular-nums">
+                {doneCount}/{applicable.length} stages
+              </span>
+            </div>
+            <Progress value={pct} aria-label="Reconstruction pipeline progress" />
+          </div>
+        )}
         <ol className="space-y-3">
           {merged.map((stage) => {
             const meta = ICONS[stage.status] ?? ICONS.pending;

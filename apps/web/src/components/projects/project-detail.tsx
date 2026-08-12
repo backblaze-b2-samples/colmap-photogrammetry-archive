@@ -31,6 +31,7 @@ import {
 import {
   useDeleteProject,
   useProject,
+  useRefetchArtifactsOnTerminal,
   useRunProject,
   useUpdateProject,
 } from "@/lib/queries";
@@ -56,6 +57,9 @@ export function ProjectDetail({ slug }: { slug: string }) {
   const del = useDeleteProject();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  // Refetch the B2 asset explorer the moment a run settles, so freshly
+  // archived artifacts appear without a manual page reload.
+  useRefetchArtifactsOnTerminal(slug, project?.status);
 
   if (isLoading) {
     return (

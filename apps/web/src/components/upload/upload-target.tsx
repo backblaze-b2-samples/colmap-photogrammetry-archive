@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FolderInput } from "lucide-react";
+import { ArrowRight, FolderInput } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -54,23 +56,36 @@ export function UploadTarget() {
             </p>
           </div>
         </div>
-        <Select
-          value={value}
-          onValueChange={(v) => setProjectTarget(v === GENERIC ? null : v)}
-          disabled={uploading}
-        >
-          <SelectTrigger className="w-full sm:w-72">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={GENERIC}>No project (uploads/)</SelectItem>
-            {projects.map((p) => (
-              <SelectItem key={p.slug} value={p.slug}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select
+            value={value}
+            onValueChange={(v) => setProjectTarget(v === GENERIC ? null : v)}
+            disabled={uploading}
+          >
+            <SelectTrigger className="w-full sm:w-72">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={GENERIC}>No project (uploads/)</SelectItem>
+              {projects.map((p) => (
+                <SelectItem key={p.slug} value={p.slug}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* Project-scoped ingest deep-links in from a project; give a way
+              straight back to it (where the Run reconstruction trigger lives)
+              instead of stranding the user on the generic upload page. */}
+          {active && (
+            <Button asChild size="sm" className="shrink-0">
+              <Link href={`/projects/${active.slug}`}>
+                Back to project
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

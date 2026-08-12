@@ -124,3 +124,45 @@ def test_dashboard_stats_aggregate_amplification(bucket):
     assert stats.source_bytes == 50
     assert stats.artifact_bytes == 150
     assert stats.ratio == 3.0
+
+
+def test_archive_marks_the_archived_stage_done(bucket):
+    """The engine returns with 'archived' still pending; the runner completes it."""
+    from app.repo.colmap_engine import STAGE_SPECS, ColmapResult
+    from app.service import reconstruction_runner as runner
+
+    svc.create_project(ProjectCreate(name="Scene"))
+    # Simulate the engine's terminal snapshot: every stage done, dense skipped
+    # (CPU), and 'archived' still pending — the state the engine hands back.
+    stages: list[dict] = []
+    for name, label in STAGE_SPECS:
+        if name == "archived":
+            status = "pending"
+        elif name == "dense":
+            status = "skipped"
+        else:
+            status = "done"
+        stages.append({"name": name, "label": label, "status": status, "detail": None})
+
+    result = ColmapResult(
+        database_db=b"d",
+        points_ply=b"p",
+        cameras_txt=b"c",
+        images_txt=b"i",
+        points3d_txt=b"3",
+        registered_image_names=["a.jpg"],
+        images_found=3,
+        images_registered=3,
+        sparse_points=10,
+        mean_reproj_error=0.5,
+        dense_points=None,
+        device="cpu",
+        stages=stages,
+    )
+    runner._archive_result("scene", result, 1.0)
+
+    project = svc.get_project("scene")
+    assert project.status == ProjectStatus.archived
+    archived = next(s for s in project.stages if s.name == "archived")
+    assert archived.status == "done"
+    assert archived.detail  # carries its own evidence of completing

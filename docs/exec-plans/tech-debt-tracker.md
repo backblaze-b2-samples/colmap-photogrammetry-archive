@@ -43,6 +43,21 @@ Low-severity polish, left for a follow-up; none blocks the core flow.
 - 404 route — the breadcrumb title-cases the unknown slug (e.g. "This Route Does Not Exist"), presenting a nonexistent route as a real page name; the rest of the 404 is solid
 - `/design` — the "Go to Upload" button inside the Patterns empty-state demo does not navigate; it is presumably a static sample, but it looks live on a linked primary surface
 
+## 2026-08-12 — verify
+
+Nitpicks surfaced by the 3-lens UX verification of the Project → ingest → COLMAP SfM →
+archive flow (all after an adversarial gate). The five confirmed blocker/friction defects
+found in the same pass were fixed in-repo; these low-severity items were left for follow-up
+and none blocks the core flow.
+
+- Project detail, reconstruction pipeline — the dense row reports the skip as "dense stage disabled for this project" while the create-dialog toggle and the stats "Dense points" tile attribute it to "CUDA required — no GPU detected"; all surfaces agree dense did not run, but the timeline obscures *why*. Align the dense-skip wording across surfaces
+- Project detail, pipeline progress bar — the determinate denominator counts the dense stage ("N/6") while running and only drops to "5/5" once dense is marked skipped near the end, so the ratio is briefly conservative on a CPU host. Exclude gated/skipped stages from the denominator up front
+- Project detail — after clicking "Run reconstruction" the status badge still reads "Draft" and the Run button isn't visibly disabled for a few seconds (the "Stage photos" pipeline check does appear immediately, so a run-started signal is present). Flip the badge/disable the button optimistically on click
+- Write-amplification panel — on a medium-quality run where derived bytes < source bytes the headline reads < 1× (e.g. 0.93×), i.e. de-amplification, while the term "amplification" implies ≥ 1×; there is no in-UI note that a ratio below 1 is expected at lower quality. Add a one-line caption or clamp the framing
+- Project detail breadcrumb — title-cases the slug (e.g. "Lensa Castle 503891") while the H1 shows the true mixed-case project name ("LensA Castle 503891"); same class as the 404 breadcrumb nitpick above. Derive the breadcrumb label from the real name, not the slug
+- Project asset explorer — the terminal auto-refresh is a single one-shot invalidation fired on the running→archived transition (guarded on the previous status being a running-family state) plus a ~4s B2 round-trip; artifacts did populate without a reload in every observed run, but a pathological ultra-fast run that never emits a running-family poll could leave it momentarily stale. Harden to refetch on any →archived regardless of prior status (or poll once/twice post-archive)
+- Dashboard "Source vs artifact bytes" chart — the leading digit of the y-axis tick labels can be clipped by the chart's left edge (renders "6, 2, 8, 4, 0" for "16, 12, 8, 4, 0"). Add left-axis margin/width
+
 ## Resolved
 
 | Description | Resolution |

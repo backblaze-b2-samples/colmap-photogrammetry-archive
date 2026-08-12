@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,25 @@ export function PreviewMedia({
   const [state, setState] = useState<MediaState>("loading");
   const hiddenUntilReady = state === "ready" ? "" : "opacity-0";
 
+  // `onLoad` alone is not reliable for `next/image` here: a cached image never
+  // re-fires it, and in dev the event can be missed even after the bitmap is
+  // decoded (observed: naturalWidth set, complete false, no onLoad). Reveal via
+  // the underlying <img> the moment it is genuinely paintable — already
+  // complete, or once `decode()` resolves — so the skeleton can't get stuck.
+  const revealWhenReady = useCallback((node: HTMLImageElement | null) => {
+    if (!node) return;
+    if (node.complete && node.naturalWidth > 0) {
+      setState("ready");
+      return;
+    }
+    node
+      .decode()
+      .then(() => setState("ready"))
+      // decode() rejects on a genuine decode error or a src swap; the img's own
+      // onError/onLoad handlers remain the fallback.
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="relative h-[min(55svh,400px)] min-h-[220px] w-full">
       {isImage ? (
@@ -40,6 +59,7 @@ export function PreviewMedia({
            expiry and we don't want Next's image optimizer caching them past
            that window. */
         <Image
+          ref={revealWhenReady}
           src={url}
           alt={filename}
           fill

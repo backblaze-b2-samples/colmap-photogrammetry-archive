@@ -194,7 +194,16 @@ def _archive_result(slug: str, result: ColmapResult, elapsed: float) -> None:
         mean_reproj_error=result.mean_reproj_error,
         dense_points=result.dense_points,
     )
-    stages = [PipelineStage.model_validate(s) for s in result.stages]
+    # The engine returns with the "archived" stage still pending — archiving
+    # happens here, after it hands back the artifacts. Mark it done so the
+    # timeline shows the final stage completing with its own evidence.
+    archived_detail = f"{len(entries)} artifact{'s' if len(entries) != 1 else ''} archived to B2"
+    stages = [
+        PipelineStage.model_validate(
+            {**s, "status": "done", "detail": archived_detail} if s["name"] == "archived" else s
+        )
+        for s in result.stages
+    ]
     manifest.save(
         live.model_copy(
             update={
