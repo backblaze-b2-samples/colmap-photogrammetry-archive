@@ -17,6 +17,9 @@ Explore the official [Backblaze B2 AI integrations and sample applications](http
 - FastAPI backend with strict layered architecture and structural tests
 - Agent-optimized docs — your AI coding agent can read the repo and start contributing immediately
 
+<!-- labs-project-page -->
+Explore this sample on the [Backblaze Labs project page](https://backblazelabs.com/projects/colmap-photogrammetry-archive/).
+
 ## What it looks like
 
 **Dashboard** — archive-wide write-amplification, project and photo counts, a per-project source-vs-artifact bytes chart, and the most recent reconstructions.
