@@ -7,8 +7,6 @@ The headline this sample demonstrates is **write amplification**: a photo set fa
 
 Runs on local OSS only — COLMAP is keyless; the only secret is your B2 credentials.
 
-Explore the official [Backblaze B2 AI integrations and sample applications](https://www.backblaze.com/cloud-storage/b2-ai-integrations?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-colmap-photogrammetry-archive) directory and the checked-in [local OpenAPI contract](docs/api/openapi.json).
-
 **What you get out of the box:**
 - Full-stack UI (Next.js 16 + React 19 + Tailwind v4 + shadcn/ui) with a **Projects** library, project detail (pipeline timeline, **write-amplification panel**, reconstruction stats, a **project-scoped asset explorer**, and a copyable presigned-serving snippet), and an archive dashboard
 - Real COLMAP SfM via `pycolmap` — SIFT extraction (CPU), matching (exhaustive / sequential / spatial), incremental mapping — run in an **isolated worker process** so a native crash can't wedge the API
