@@ -18,7 +18,7 @@ PyPDF2>=3.0.0
 # missing on a given platform. Pinned (unbounded ML deps are a false-green
 # class); pycolmap<3.12 keeps numpy<2 for the CPU wheel.
 pycolmap>=3.10,<3.12
-numpy>=1.26,<2
+numpy>=2.5.2,<3
 plyfile>=1.0
 imageio>=2.34
 imageio-ffmpeg>=0.5
