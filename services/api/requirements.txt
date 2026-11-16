@@ -10,7 +10,7 @@ pydantic>=2.10.0
 pydantic-settings>=2.7.0
 boto3>=1.35.0
 Pillow>=11.0.0
-PyPDF2>=3.0.0
+PyPDF2>=3.0.1
 
 # COLMAP structure-from-motion (pycolmap is COLMAP's own Python bindings). All
 # heavy wheels are LAZY-imported inside app/repo/ functions, so the FastAPI app,
